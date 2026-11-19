@@ -36,6 +36,7 @@ import type { ListingRow } from "@/utils/supabase/database.types";
 
 const imageBucket = "marketplace-listings";
 const pendingCheckoutStorageKey = "fairground.pendingCheckout";
+const pendingOnboardingStorageKey = "fairground.pendingOnboardingListing";
 const imageExtensions: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -125,7 +126,7 @@ const emptyListingDraft: ListingDraft = {
   location: "",
   seller: "",
   sellerEmail: "",
-  sellerCountry: "ID",
+  sellerCountry: "US",
   image: "",
   imageFile: null,
   description: "",
@@ -380,12 +381,60 @@ export default function Home() {
   }
 
   useEffect(() => {
+    let requestInProgress = false;
+
+    async function reconcileReturnedOnboarding() {
+      const listingId = sessionStorage.getItem(pendingOnboardingStorageKey);
+      if (!listingId || requestInProgress) return;
+
+      requestInProgress = true;
+      try {
+        const response = await fetch("/api/connect/abandon", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId }),
+        });
+        const result = (await response.json()) as {
+          removed?: boolean;
+          error?: string;
+        };
+
+        if (response.ok) {
+          sessionStorage.removeItem(pendingOnboardingStorageKey);
+          if (result.removed) {
+            setNotification(
+              "Stripe onboarding wasn’t completed, so the pending listing was removed.",
+            );
+          }
+        } else if (response.status < 500) {
+          sessionStorage.removeItem(pendingOnboardingStorageKey);
+          console.error("Could not reconcile returned seller onboarding:", result.error);
+        }
+      } catch (error) {
+        console.error("Could not reconcile returned seller onboarding:", error);
+      } finally {
+        requestInProgress = false;
+      }
+    }
+
+    void reconcileReturnedOnboarding();
+    window.addEventListener("pageshow", reconcileReturnedOnboarding);
+    window.addEventListener("focus", reconcileReturnedOnboarding);
+    return () => {
+      window.removeEventListener("pageshow", reconcileReturnedOnboarding);
+      window.removeEventListener("focus", reconcileReturnedOnboarding);
+    };
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const connect = params.get("connect");
     const checkout = params.get("checkout");
     const message =
       connect === "complete"
         ? "Your listing is live. Stripe confirmed your seller account is ready."
+        : connect === "removed"
+          ? "Stripe onboarding wasn’t completed, so the pending listing was removed."
         : connect === "pending"
           ? "Your listing was saved, but stays hidden until Stripe confirms your seller account is ready to accept payments."
           : connect === "check_failed"
@@ -658,6 +707,7 @@ export default function Home() {
         }
 
         showNotification("Continue to Stripe to finish seller onboarding.");
+        sessionStorage.setItem(pendingOnboardingStorageKey, id);
         window.location.assign(result.onboardingUrl);
         return;
       }
@@ -1184,7 +1234,7 @@ export default function Home() {
                           id="seller-country"
                           name="sellerCountry"
                           autoComplete="country"
-                          placeholder="ID"
+                          placeholder="US"
                           maxLength={2}
                           value={draft.sellerCountry}
                           onChange={(event) =>

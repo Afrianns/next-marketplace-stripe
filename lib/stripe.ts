@@ -36,6 +36,7 @@ export async function getConnectedAccountReadiness(accountId: string) {
 export async function createConnectedAccountLink(
   accountId: string,
   refreshToken: string,
+  listingId?: string,
 ) {
   const siteUrl = process.env.SITE_URL;
   if (!siteUrl) {
@@ -46,9 +47,11 @@ export async function createConnectedAccountLink(
   const refreshUrl = new URL("/api/connect/refresh", baseUrl);
   refreshUrl.searchParams.set("account", accountId);
   refreshUrl.searchParams.set("token", refreshToken);
+  if (listingId) refreshUrl.searchParams.set("listing_id", listingId);
 
   const returnUrl = new URL("/api/connect/return", baseUrl);
   returnUrl.searchParams.set("account", accountId);
+  if (listingId) returnUrl.searchParams.set("listing_id", listingId);
 
   return getStripe().accountLinks.create({
     account: accountId,

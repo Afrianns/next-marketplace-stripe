@@ -39,6 +39,7 @@ Apply the migrations in order using the Supabase SQL Editor:
 3. `supabase/migrations/20261119020000_grant_server_api_privileges.sql`
 4. `supabase/migrations/20261119023000_allow_consumed_email_verification_codes.sql`
 5. `supabase/migrations/20261119030000_use_managed_risk_direct_charges.sql`
+6. `supabase/migrations/20261119040000_allow_server_listing_cleanup.sql`
 
 The second migration adds seller account records, listing/payment states, order
 and webhook tables, and server-only functions for seller verification and atomic
@@ -49,6 +50,8 @@ need without widening access for `anon` or `authenticated`.
 The fourth allows a successfully used verification code to be cleared.
 The fifth adds direct-charge readiness state and binds Connect webhook events
 to the connected account that created each order.
+The sixth allows the server to delete a listing whose seller returns from Stripe
+onboarding without completing the requirements.
 
 Existing sample listings can still be displayed, but must be associated with an
 onboarded seller account before checkout can be enabled for them.

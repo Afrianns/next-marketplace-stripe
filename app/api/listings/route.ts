@@ -162,6 +162,7 @@ export async function POST(request: Request) {
       const accountLink = await createConnectedAccountLink(
         sellerAccount.accountId,
         sellerAccount.refreshToken!,
+        id,
       );
       onboardingUrl = accountLink.url;
     }
