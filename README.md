@@ -88,7 +88,9 @@ expiration or failed asynchronous payment releases the reservation. Webhook
 signatures, connected-account ownership, and duplicate event IDs are checked
 server-side. If a buyer cancels or returns to the marketplace while Checkout is
 open, the Checkout Session is expired and the reservation is released so the
-listing can be purchased again.
+listing can be purchased again. The marketplace also expires unpaid Checkout
+Sessions older than five minutes when it loads and rechecks them once per minute
+while open; completed sessions remain reserved for webhook confirmation.
 
 Sellers receive the remaining funds in their Stripe balance and are paid out
 according to their Stripe payout schedule. This is a direct-charge model; the

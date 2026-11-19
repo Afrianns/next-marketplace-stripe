@@ -167,6 +167,33 @@ function mapListing(row: PublicListingRow, image: string): Listing {
   };
 }
 
+type CheckoutResolution = {
+  listingId: string;
+  status: "available" | "processing" | "sold";
+};
+
+async function requestCheckoutReconciliation() {
+  const response = await fetch("/api/checkout/reconcile", { method: "POST" });
+  const result = (await response.json()) as {
+    error?: string;
+    failedCount?: number;
+    resolutions?: CheckoutResolution[];
+  };
+  if (!response.ok) {
+    throw new Error(result.error ?? "Could not refresh checkout reservations.");
+  }
+  return {
+    failedCount: result.failedCount ?? 0,
+    resolutions: result.resolutions ?? [],
+  };
+}
+
+function listingStatusFromCheckout(
+  status: CheckoutResolution["status"],
+): Listing["status"] {
+  return status === "processing" ? "reserved" : status;
+}
+
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
@@ -196,6 +223,22 @@ export default function Home() {
       setListingsError("");
 
       try {
+        try {
+          const reconciliation = await requestCheckoutReconciliation();
+          if (reconciliation.failedCount > 0 && !cancelled) {
+            setNotification(
+              "Some checkout reservations could not be refreshed. We’ll retry automatically.",
+            );
+          }
+        } catch (error) {
+          console.error("Could not refresh checkout reservations:", error);
+          if (!cancelled) {
+            setNotification(
+              "Could not refresh checkout reservations. We’ll retry automatically.",
+            );
+          }
+        }
+
         const { data, error } = await supabase
           .from("listings")
           .select(
@@ -253,6 +296,62 @@ export default function Home() {
       cancelled = true;
     };
   }, [supabase]);
+
+  useEffect(() => {
+    let requestInProgress = false;
+
+    async function reconcileReservations() {
+      if (requestInProgress) return;
+      requestInProgress = true;
+      try {
+        const reconciliation = await requestCheckoutReconciliation();
+        const statuses = new Map(
+          reconciliation.resolutions.map((item) => [
+            item.listingId,
+            listingStatusFromCheckout(item.status),
+          ]),
+        );
+        setListings((current) =>
+          current.map((listing) => {
+            const status = statuses.get(listing.id);
+            return status ? { ...listing, status } : listing;
+          }),
+        );
+        setSelectedListing((current) => {
+          if (!current) return current;
+          const status = statuses.get(current.id);
+          return status ? { ...current, status } : current;
+        });
+        if (reconciliation.failedCount > 0) {
+          setNotification(
+            "Some checkout reservations could not be refreshed. We’ll retry automatically.",
+          );
+        }
+      } catch (error) {
+        console.error("Could not refresh checkout reservations:", error);
+        setNotification(
+          "Could not refresh checkout reservations. We’ll retry automatically.",
+        );
+      } finally {
+        requestInProgress = false;
+      }
+    }
+
+    function reconcileWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void reconcileReservations();
+      }
+    }
+
+    const interval = window.setInterval(reconcileWhenVisible, 60_000);
+    document.addEventListener("visibilitychange", reconcileWhenVisible);
+    window.addEventListener("pageshow", reconcileWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", reconcileWhenVisible);
+      window.removeEventListener("pageshow", reconcileWhenVisible);
+    };
+  }, []);
 
   useEffect(() => {
     const previewUrl = draft.image;
