@@ -21,6 +21,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
+STRIPE_ACCOUNT_WEBHOOK_SECRET=
 SELLER_VERIFICATION_SECRET=
 SITE_URL=http://localhost:3000
 GMAIL_USER=
@@ -85,6 +86,25 @@ Subscribe it to these Checkout events and set that endpoint's signing secret as
 - `checkout.session.async_payment_succeeded`
 - `checkout.session.async_payment_failed`
 - `checkout.session.expired`
+
+Create a second Stripe event destination in **thin event** format for connected
+account updates at:
+
+```text
+https://your-domain.example/api/stripe/account-webhook
+```
+
+Subscribe it to these Accounts v2 events and set its signing secret as
+`STRIPE_ACCOUNT_WEBHOOK_SECRET`:
+
+- `v2.core.account.updated`
+- `v2.core.account[configuration.merchant].capability_status_updated`
+- `v2.core.account[configuration.merchant].updated`
+- `v2.core.account[requirements].updated`
+
+The account webhook fetches the latest state from Stripe and syncs seller and
+listing readiness in Supabase. The Stripe return handler also retries the sync
+briefly so the seller can see the updated state immediately after onboarding.
 
 The Buy now flow creates a one-time USD Checkout Session directly on the seller's
 connected account, reserves the listing, and collects a 10% application fee for

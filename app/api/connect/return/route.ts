@@ -1,5 +1,16 @@
 import { syncSellerAccount } from "@/lib/connect";
 
+async function syncSellerAccountAfterOnboarding(accountId: string) {
+  let seller = await syncSellerAccount(accountId);
+
+  for (let attempt = 0; seller && !seller.complete && attempt < 3; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    seller = await syncSellerAccount(accountId);
+  }
+
+  return seller;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const accountId = url.searchParams.get("account") ?? "";
@@ -13,7 +24,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const seller = await syncSellerAccount(accountId);
+    const seller = await syncSellerAccountAfterOnboarding(accountId);
     const destination = new URL("/", siteUrl);
     destination.searchParams.set("connect", seller?.complete ? "complete" : "pending");
     return Response.redirect(destination, 303);
