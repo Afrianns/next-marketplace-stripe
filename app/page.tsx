@@ -274,11 +274,11 @@ export default function Home() {
     const checkout = params.get("checkout");
     const message =
       connect === "complete"
-        ? "Stripe confirmed your seller account is ready."
+        ? "Your listing is live. Stripe confirmed your seller account is ready."
         : connect === "pending"
-          ? "Stripe is still reviewing your seller details. Your listing will appear when transfers are enabled."
+          ? "Your listing was saved, but is hidden until Stripe activates card payments for your seller account."
           : connect === "check_failed"
-            ? "We couldn’t verify your Stripe status. Please try again."
+            ? "Your listing was saved, but we couldn’t verify your Stripe status. Please try again."
             : checkout === "cancelled"
               ? "Checkout was canceled; the listing is still available."
               : "";
