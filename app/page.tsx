@@ -35,6 +35,7 @@ import { createClient } from "@/utils/supabase/client";
 import type { ListingRow } from "@/utils/supabase/database.types";
 
 const imageBucket = "marketplace-listings";
+const pendingCheckoutStorageKey = "fairground.pendingCheckout";
 const imageExtensions: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -210,18 +211,29 @@ export default function Home() {
           return;
         }
 
-        setListings(
-          data.map((row) => {
-            const imageUrl = row.image_path.startsWith(
-              "https://images.unsplash.com/",
-            )
-              ? row.image_path
-              : supabase.storage
-                  .from(imageBucket)
-                  .getPublicUrl(row.image_path).data.publicUrl;
-            return mapListing(row, imageUrl);
-          }),
+        const loadedListings = data.map((row) => {
+          const imageUrl = row.image_path.startsWith(
+            "https://images.unsplash.com/",
+          )
+            ? row.image_path
+            : supabase.storage
+                .from(imageBucket)
+                .getPublicUrl(row.image_path).data.publicUrl;
+          return mapListing(row, imageUrl);
+        });
+        setListings(loadedListings);
+
+        const params = new URLSearchParams(window.location.search);
+        const canceledListingId =
+          params.get("checkout") === "cancelled"
+            ? params.get("listing_id")
+            : null;
+        const canceledListing = loadedListings.find(
+          (listing) => listing.id === canceledListingId,
         );
+        if (canceledListing?.status === "available") {
+          setSelectedListing(canceledListing);
+        }
       } catch (error) {
         if (!cancelled) {
           setListingsError(
@@ -280,7 +292,13 @@ export default function Home() {
           : connect === "check_failed"
             ? "Your listing was saved, but we couldn’t verify your Stripe status. Please try again."
             : checkout === "cancelled"
-              ? "Checkout was canceled; the listing is still available."
+              ? "Checkout was canceled. You can buy this listing again."
+              : checkout === "processing"
+                ? "Payment is still processing. This listing remains reserved until Stripe confirms the result."
+                : checkout === "complete"
+                  ? "Payment completed. This listing is sold."
+                  : checkout === "cancel_failed"
+                    ? "We couldn’t confirm checkout cancellation. The listing remains reserved for now."
               : "";
 
     if (message) {
@@ -293,6 +311,87 @@ export default function Home() {
         window.clearTimeout(dismissTimeout);
       };
     }
+  }, []);
+
+  useEffect(() => {
+    let requestInProgress = false;
+
+    async function resumePendingCheckout() {
+      if (requestInProgress) return;
+
+      const storedCheckout = sessionStorage.getItem(pendingCheckoutStorageKey);
+      if (!storedCheckout) return;
+
+      let pendingCheckout: { orderId: string; listingId: string };
+      try {
+        pendingCheckout = JSON.parse(storedCheckout) as {
+          orderId: string;
+          listingId: string;
+        };
+      } catch {
+        sessionStorage.removeItem(pendingCheckoutStorageKey);
+        return;
+      }
+
+      requestInProgress = true;
+      try {
+        const response = await fetch("/api/checkout/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: pendingCheckout.orderId }),
+        });
+        const result = (await response.json()) as {
+          error?: string;
+          listingId?: string;
+          status?: "available" | "processing" | "sold";
+        };
+        if (!response.ok || !result.status) {
+          throw new Error(
+            result.error ?? "Could not confirm checkout status.",
+          );
+        }
+
+        sessionStorage.removeItem(pendingCheckoutStorageKey);
+        const listingId = result.listingId ?? pendingCheckout.listingId;
+        const status =
+          result.status === "available"
+            ? "available"
+            : result.status === "sold"
+              ? "sold"
+              : "reserved";
+        setListings((current) =>
+          current.map((listing) =>
+            listing.id === listingId ? { ...listing, status } : listing,
+          ),
+        );
+        setSelectedListing((current) =>
+          current?.id === listingId ? { ...current, status } : current,
+        );
+        setNotification(
+          result.status === "available"
+            ? "Checkout was canceled. You can buy this listing again."
+            : result.status === "sold"
+              ? "Payment completed. This listing is sold."
+              : "Payment is still processing. This listing remains reserved.",
+        );
+        window.setTimeout(() => setNotification(""), 5000);
+      } catch (error) {
+        setNotification(
+          error instanceof Error
+            ? error.message
+            : "Could not confirm checkout cancellation.",
+        );
+        window.setTimeout(() => setNotification(""), 5000);
+      } finally {
+        requestInProgress = false;
+      }
+    }
+
+    window.addEventListener("pageshow", resumePendingCheckout);
+    void resumePendingCheckout();
+    return () => {
+      window.removeEventListener("pageshow", resumePendingCheckout);
+    };
   }, []);
 
   function updateDraft<Key extends keyof ListingDraft>(
@@ -506,13 +605,26 @@ export default function Home() {
       const result = (await response.json()) as {
         error?: string;
         checkoutUrl?: string;
+        orderId?: string;
       };
 
-      if (!response.ok || !result.checkoutUrl) {
+      if (!response.ok || !result.checkoutUrl || !result.orderId) {
         setCheckoutError(result.error ?? "Could not start checkout.");
         return;
       }
 
+      sessionStorage.setItem(
+        pendingCheckoutStorageKey,
+        JSON.stringify({ orderId: result.orderId, listingId: selectedListing.id }),
+      );
+      setListings((current) =>
+        current.map((listing) =>
+          listing.id === selectedListing.id
+            ? { ...listing, status: "reserved" }
+            : listing,
+        ),
+      );
+      setSelectedListing({ ...selectedListing, status: "reserved" });
       window.location.assign(result.checkoutUrl);
     } catch (error) {
       setCheckoutError(
@@ -718,11 +830,7 @@ export default function Home() {
                         style={{ backgroundImage: `url("${listing.image}")` }}
                       />
                       <span className="absolute left-2.5 top-2.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-neutral-600 backdrop-blur">
-                        {listing.status === "sold"
-                          ? "Sold out"
-                          : listing.status === "reserved"
-                            ? "Checkout in progress"
-                            : listing.category}
+                        {listing.category}
                       </span>
                     </div>
                     <CardContent className="px-3 pb-3 pt-3">
@@ -732,6 +840,16 @@ export default function Home() {
                       <h3 className="mt-0.5 truncate text-base font-bold text-neutral-800">
                         {listing.title}
                       </h3>
+                      {listing.status === "reserved" && (
+                        <p className="mt-1 text-xs font-medium text-amber-700">
+                          Checkout in progress
+                        </p>
+                      )}
+                      {listing.status === "sold" && (
+                        <p className="mt-1 text-xs font-medium text-neutral-500">
+                          Sold out
+                        </p>
+                      )}
                       <p className="mt-1 flex items-center gap-1 text-xs text-neutral-400">
                         <MapPin className="size-3" />
                         {listing.location}

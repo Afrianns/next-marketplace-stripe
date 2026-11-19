@@ -149,8 +149,8 @@ export async function POST(request: Request) {
     const baseUrl = new URL(siteUrl);
     const successUrl = new URL("/checkout/success", baseUrl);
     successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
-    const cancelUrl = new URL("/", baseUrl);
-    cancelUrl.searchParams.set("checkout", "cancelled");
+    const cancelUrl = new URL("/api/checkout/cancel", baseUrl);
+    cancelUrl.searchParams.set("order_id", orderId);
     let session;
     try {
       session = await getStripe().checkout.sessions.create(
@@ -241,7 +241,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return Response.json({ checkoutUrl: session.url });
+    return Response.json({ checkoutUrl: session.url, orderId });
   } catch (error) {
     console.error("Could not start marketplace checkout:", error);
     return Response.json(

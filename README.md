@@ -86,7 +86,9 @@ the platform. Stripe deducts processing fees from the seller's charge. A verifie
 Connect webhook records payment in Supabase and marks the listing sold;
 expiration or failed asynchronous payment releases the reservation. Webhook
 signatures, connected-account ownership, and duplicate event IDs are checked
-server-side.
+server-side. If a buyer cancels or returns to the marketplace while Checkout is
+open, the Checkout Session is expired and the reservation is released so the
+listing can be purchased again.
 
 Sellers receive the remaining funds in their Stripe balance and are paid out
 according to their Stripe payout schedule. This is a direct-charge model; the
