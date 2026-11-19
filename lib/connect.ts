@@ -34,6 +34,7 @@ export async function getOrCreateSellerAccount(
   email: string,
   sellerName: string,
   country: string,
+  creationRequestId: string,
 ) {
   const supabase = createAdminClient();
   const normalizedEmail = normalizeEmail(email);
@@ -86,7 +87,21 @@ export async function getOrCreateSellerAccount(
       const parameterHash = createHash("sha256")
         .update(JSON.stringify(accountParams))
         .digest("hex");
-      account = await createAccount(`seller-v2-${parameterHash}`);
+      try {
+        account = await createAccount(`seller-v2-${parameterHash}`);
+      } catch (versionedError) {
+        if (
+          !(versionedError instanceof Stripe.errors.StripeError) ||
+          versionedError.code !== "idempotency_error"
+        ) {
+          throw versionedError;
+        }
+
+        // A previous deployment may have already used the parameter key with
+        // a different Stripe request shape. Scope the final retry to this
+        // listing submission so the same request remains safely retryable.
+        account = await createAccount(`seller-v3-${creationRequestId}`);
+      }
     }
     accountId = account.id;
 

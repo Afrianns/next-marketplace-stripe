@@ -139,6 +139,7 @@ export async function POST(request: Request) {
       email,
       sellerName,
       sellerCountry,
+      id,
     );
     let onboardingUrl: string | null = null;
 
