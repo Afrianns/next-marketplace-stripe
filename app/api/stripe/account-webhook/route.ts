@@ -39,8 +39,10 @@ export async function POST(request: Request) {
     return Response.json({ received: true, ignored: true });
   }
 
+  const relatedObject =
+    "related_object" in notification ? notification.related_object : undefined;
   const accountId =
-    "related_object" in notification ? notification.related_object.id : "";
+    relatedObject && "id" in relatedObject ? relatedObject.id : "";
   if (!/^acct_[A-Za-z0-9]+$/.test(accountId)) {
     console.error("Stripe account event has no valid related account ID.", {
       eventId: notification.id,
