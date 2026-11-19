@@ -50,9 +50,8 @@ need without widening access for `anon` or `authenticated`.
 The fourth allows a successfully used verification code to be cleared.
 The fifth adds direct-charge readiness state and binds Connect webhook events
 to the connected account that created each order.
-The sixth allows the server to delete a listing whose seller returns from Stripe
-onboarding without completing the requirements, and when it expires after one
-hour.
+The sixth grants the server permission to delete listings that remain pending
+after seller onboarding expires.
 
 Existing sample listings can still be displayed, but must be associated with an
 onboarded seller account before checkout can be enabled for them.

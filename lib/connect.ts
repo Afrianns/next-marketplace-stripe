@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type Stripe from "stripe";
+import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   connectApiVersion,
@@ -62,13 +62,32 @@ export async function getOrCreateSellerAccount(
       display_name: sellerName.trim(),
       identity: { country: normalizedCountry },
     };
-    const idempotencyKey = createHash("sha256")
+    const legacyIdempotencyKey = createHash("sha256")
       .update(`${normalizedEmail}:${normalizedCountry}`)
       .digest("hex");
-    const account = await getStripe().v2.core.accounts.create(accountParams, {
-      apiVersion: connectApiVersion,
-      idempotencyKey: `seller-${idempotencyKey}`,
-    });
+    const stripe = getStripe();
+    const createAccount = (idempotencyKey: string) =>
+      stripe.v2.core.accounts.create(accountParams, {
+        apiVersion: connectApiVersion,
+        idempotencyKey,
+      });
+
+    let account: Awaited<ReturnType<typeof createAccount>>;
+    try {
+      account = await createAccount(`seller-${legacyIdempotencyKey}`);
+    } catch (error) {
+      if (
+        !(error instanceof Stripe.errors.StripeError) ||
+        error.code !== "idempotency_error"
+      ) {
+        throw error;
+      }
+
+      const parameterHash = createHash("sha256")
+        .update(JSON.stringify(accountParams))
+        .digest("hex");
+      account = await createAccount(`seller-v2-${parameterHash}`);
+    }
     accountId = account.id;
 
     const { error: insertError } = await supabase

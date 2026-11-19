@@ -43,8 +43,8 @@ export async function sendSellerVerificationCode(email: string, code: string) {
       <td align="center">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 480px; background-color: #ffffff; border-radius: 12px; border: 1px solid #e4e4e7; overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);">          
           <!-- Header -->
+          <td style="padding: 32px 32px 0 32px; text-align: left;">
           <tr>
-            <td style="padding: 32px 32px 0 32px; text-align: left;">
               <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: #18181b;">
                 fairground
               </span>
@@ -124,7 +124,7 @@ export async function sendSellerOnboardingLink(
     from: { name: "fairground", address: user },
     to: email,
     subject: "Finish setting up your fairground listing",
-    text: `Hi ${sellerName},\n\nContinue Stripe seller onboarding for “${listingTitle}” using this link:\n${onboardingUrl}\n\nYour listing will be removed if onboarding is not completed within one hour of creation.`,
+    text: `Hi ${sellerName},\n\nContinue Stripe seller onboarding for "${listingTitle}" using this link:\n${onboardingUrl}\n\nYour listing will be removed if onboarding is not completed within one hour of creation.`,
     html: `
 <!DOCTYPE html>
 <html lang="en">

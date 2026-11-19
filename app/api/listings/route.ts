@@ -220,6 +220,19 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message.includes("different country")) {
       return Response.json({ error: error.message }, { status: 409 });
     }
+    if (
+      error instanceof Stripe.errors.StripeError &&
+      error.code === "resource_missing" &&
+      error.param === "account"
+    ) {
+      return Response.json(
+        {
+          error:
+            "The seller's saved Stripe account was not found in the current Stripe environment. Check that STRIPE_SECRET_KEY points to the same Stripe platform and test or live mode where this account was created. If you intentionally changed environments, the seller needs to restart onboarding there.",
+        },
+        { status: 409 },
+      );
+    }
     if (stripeSetupError(error)) {
       return Response.json(
         {
