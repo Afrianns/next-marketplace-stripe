@@ -414,6 +414,7 @@ export default function Home() {
 
   useEffect(() => {
     let requestInProgress = false;
+    let processingNotificationShown = false;
 
     async function resumePendingCheckout() {
       if (requestInProgress) return;
@@ -450,7 +451,9 @@ export default function Home() {
           );
         }
 
-        sessionStorage.removeItem(pendingCheckoutStorageKey);
+        if (result.status !== "processing") {
+          sessionStorage.removeItem(pendingCheckoutStorageKey);
+        }
         const listingId = result.listingId ?? pendingCheckout.listingId;
         const status =
           result.status === "available"
@@ -466,14 +469,17 @@ export default function Home() {
         setSelectedListing((current) =>
           current?.id === listingId ? { ...current, status } : current,
         );
-        setNotification(
-          result.status === "available"
-            ? "Checkout was canceled. You can buy this listing again."
-            : result.status === "sold"
-              ? "Payment completed. This listing is sold."
-              : "Payment is still processing. This listing remains reserved.",
-        );
-        window.setTimeout(() => setNotification(""), 5000);
+        if (result.status !== "processing" || !processingNotificationShown) {
+          setNotification(
+            result.status === "available"
+              ? "Checkout was canceled. You can buy this listing again."
+              : result.status === "sold"
+                ? "Payment completed. This listing is sold."
+                : "Payment is still processing. This listing remains reserved.",
+          );
+          window.setTimeout(() => setNotification(""), 5000);
+          processingNotificationShown = result.status === "processing";
+        }
       } catch (error) {
         setNotification(
           error instanceof Error
@@ -487,8 +493,14 @@ export default function Home() {
     }
 
     window.addEventListener("pageshow", resumePendingCheckout);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void resumePendingCheckout();
+      }
+    }, 30_000);
     void resumePendingCheckout();
     return () => {
+      window.clearInterval(interval);
       window.removeEventListener("pageshow", resumePendingCheckout);
     };
   }, []);

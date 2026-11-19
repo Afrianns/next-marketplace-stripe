@@ -6,8 +6,9 @@ export default function CheckoutSuccessPage() {
       <section className="max-w-lg rounded-2xl bg-white p-8 text-center shadow-sm">
         <h1 className="text-2xl font-bold">Thanks for your order</h1>
         <p className="mt-3 text-sm leading-6 text-neutral-600">
-          Stripe is confirming your payment. The order and listing status update
-          from Stripe’s signed webhook, so this page alone does not confirm
+          Stripe is confirming your payment. The signed webhook updates your
+          order, and returning to the marketplace also checks the Checkout
+          Session directly with Stripe. This page alone does not confirm
           payment.
         </p>
         <Link

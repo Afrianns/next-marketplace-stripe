@@ -90,7 +90,8 @@ server-side. If a buyer cancels or returns to the marketplace while Checkout is
 open, the Checkout Session is expired and the reservation is released so the
 listing can be purchased again. The marketplace also expires unpaid Checkout
 Sessions older than five minutes when it loads and rechecks them once per minute
-while open; completed sessions remain reserved for webhook confirmation.
+while open; completed sessions are reconciled directly with Stripe as well as
+through the webhook.
 
 Sellers receive the remaining funds in their Stripe balance and are paid out
 according to their Stripe payout schedule. This is a direct-charge model; the
