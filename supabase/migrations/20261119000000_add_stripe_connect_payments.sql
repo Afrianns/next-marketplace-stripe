@@ -54,7 +54,7 @@ create unique index if not exists listing_orders_one_open_per_listing_idx
 
 create table if not exists public.seller_email_verifications (
   email text primary key check (email = lower(btrim(email))),
-  code_hash text not null,
+  code_hash text,
   expires_at timestamptz not null,
   attempts integer not null default 0 check (attempts >= 0),
   last_sent_at timestamptz not null,
