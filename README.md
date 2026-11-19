@@ -60,9 +60,10 @@ Configure Stripe Connect for the platform and set `STRIPE_SECRET_KEY` and
 `card_payments` capability, Stripe-managed losses, and direct charges. Seller
 emails are verified before they can be associated with a Connect account. A
 verified email already present in the local `seller_accounts` table reuses that
-account; fully onboarded sellers skip onboarding. Other sellers receive
-Stripe-hosted onboarding. A listing is shown only after Stripe reports active
-card-payments capability and no outstanding requirements.
+account; fully onboarded sellers skip onboarding. After email verification,
+other sellers are redirected directly to Stripe-hosted onboarding. Their listing
+stays pending until Stripe reports active card-payments capability and no
+outstanding requirements.
 
 Create a Connect webhook endpoint that listens to events from **connected
 accounts** at:

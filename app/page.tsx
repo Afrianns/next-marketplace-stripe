@@ -423,7 +423,6 @@ export default function Home() {
       const result = (await response.json()) as {
         created?: boolean;
         error?: string;
-        emailSent?: boolean;
         sellerOnboardingComplete?: boolean;
         onboardingUrl?: string;
       };
@@ -440,22 +439,34 @@ export default function Home() {
         return;
       }
 
-      if (result.sellerOnboardingComplete) {
-        const imageUrl = supabase.storage
-          .from(imageBucket)
-          .getPublicUrl(imagePath).data.publicUrl;
-        setListings((current) => [
-          mapListing(
-            {
-              ...listingData,
-              status: "available",
-              created_at: new Date().toISOString(),
-            },
-            imageUrl,
-          ),
-          ...current,
-        ]);
+      if (!result.sellerOnboardingComplete) {
+        if (!result.onboardingUrl) {
+          setFormError(
+            "The listing is saved, but Stripe did not return an onboarding link. Try submitting again to continue.",
+          );
+          return;
+        }
+
+        showNotification("Continue to Stripe to finish seller onboarding.");
+        window.location.assign(result.onboardingUrl);
+        return;
       }
+
+      const imageUrl = supabase.storage
+        .from(imageBucket)
+        .getPublicUrl(imagePath).data.publicUrl;
+      setListings((current) => [
+        mapListing(
+          {
+            ...listingData,
+            status: "available",
+            created_at: new Date().toISOString(),
+          },
+          imageUrl,
+        ),
+        ...current,
+      ]);
+
       setActiveCategory("All");
       setSearch("");
       setIsFormOpen(false);
@@ -464,16 +475,7 @@ export default function Home() {
       setVerificationCode("");
       setSellerEmailVerified(false);
       setImageUploadError("");
-      showNotification(
-        result.sellerOnboardingComplete
-          ? "Your listing is live."
-          : result.emailSent
-            ? "Listing saved. Check your email to finish Stripe onboarding."
-            : "Listing saved. Continue Stripe onboarding using the link shown.",
-      );
-      if (result.onboardingUrl) {
-        window.location.assign(result.onboardingUrl);
-      }
+      showNotification("Your listing is live.");
     } catch (error) {
       setFormError(
         error instanceof Error ? error.message : "Could not publish listing.",

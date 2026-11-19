@@ -4,7 +4,6 @@ import { createConnectedAccountLink } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateSellerAccount } from "@/lib/connect";
 import { isSameOriginRequest, isValidEmail } from "@/lib/http";
-import { sendConnectOnboardingLink } from "@/lib/marketplace-email";
 import {
   hashSellerVerificationToken,
   normalizeEmail,
@@ -141,7 +140,6 @@ export async function POST(request: Request) {
       sellerCountry,
     );
     let onboardingUrl: string | null = null;
-    let emailSent = false;
 
     if (!sellerAccount.readiness.complete) {
       const { error: tokenError } = await supabase
@@ -197,21 +195,11 @@ export async function POST(request: Request) {
       );
     }
 
-    if (onboardingUrl) {
-      try {
-        await sendConnectOnboardingLink(email, sellerName, onboardingUrl);
-        emailSent = true;
-      } catch (error) {
-        console.error("Could not email the Stripe onboarding link:", error);
-      }
-    }
-
     return Response.json(
       {
         created: true,
         sellerOnboardingComplete: sellerAccount.readiness.complete,
-        emailSent,
-        onboardingUrl: emailSent ? undefined : onboardingUrl,
+        onboardingUrl,
       },
       { status: 201 },
     );
