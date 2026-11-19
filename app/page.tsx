@@ -276,7 +276,7 @@ export default function Home() {
       connect === "complete"
         ? "Your listing is live. Stripe confirmed your seller account is ready."
         : connect === "pending"
-          ? "Your listing was saved, but is hidden until Stripe activates card payments for your seller account."
+          ? "Your listing was saved, but stays hidden until Stripe confirms your seller account is ready to accept payments."
           : connect === "check_failed"
             ? "Your listing was saved, but we couldn’t verify your Stripe status. Please try again."
             : checkout === "cancelled"
