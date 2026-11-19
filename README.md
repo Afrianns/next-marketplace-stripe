@@ -36,11 +36,14 @@ Apply the migrations in order using the Supabase SQL Editor:
 
 1. `supabase/migrations/20261118000000_create_marketplace_tables.sql`
 2. `supabase/migrations/20261119000000_add_stripe_connect_payments.sql`
+3. `supabase/migrations/20261119020000_grant_server_api_privileges.sql`
 
 The second migration adds seller account records, listing/payment states, order
 and webhook tables, and server-only functions for seller verification and atomic
 listing reservation. Public catalog reads exclude seller email, address, and
 phone. Listing creation and payment state changes are performed by server APIs.
+The third grants the server-only `service_role` the table privileges those APIs
+need without widening access for `anon` or `authenticated`.
 
 Existing sample listings can still be displayed, but must be associated with an
 onboarded seller account before checkout can be enabled for them.
