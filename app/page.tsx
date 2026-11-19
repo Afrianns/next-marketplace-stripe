@@ -15,19 +15,15 @@ import {
   ImagePlus,
   Lamp,
   Laptop,
-  Mail,
   MapPin,
   Menu,
   PackagePlus,
-  Phone,
   Search,
-  Send,
   Shirt,
   Sofa,
   Sparkles,
   Tag,
   Trees,
-  Upload,
   UserRound,
   X,
 } from "lucide-react";
@@ -102,12 +98,10 @@ type Listing = {
   category: string;
   location: string;
   seller: string;
-  sellerEmail: string;
-  sellerAddress: string;
-  sellerPhone: string;
   image: string;
   description: string;
   posted: string;
+  status: ListingRow["status"];
 };
 
 type ListingDraft = {
@@ -117,8 +111,7 @@ type ListingDraft = {
   location: string;
   seller: string;
   sellerEmail: string;
-  sellerAddress: string;
-  sellerPhone: string;
+  sellerCountry: string;
   image: string;
   imageFile: File | null;
   description: string;
@@ -131,8 +124,7 @@ const emptyListingDraft: ListingDraft = {
   location: "",
   seller: "",
   sellerEmail: "",
-  sellerAddress: "",
-  sellerPhone: "",
+  sellerCountry: "ID",
   image: "",
   imageFile: null,
   description: "",
@@ -145,7 +137,21 @@ const formatPrice = (price: number) =>
     maximumFractionDigits: 0,
   }).format(price);
 
-function mapListing(row: ListingRow, image: string): Listing {
+type PublicListingRow = Pick<
+  ListingRow,
+  | "id"
+  | "title"
+  | "price"
+  | "category"
+  | "location"
+  | "seller_name"
+  | "description"
+  | "image_path"
+  | "created_at"
+  | "status"
+>;
+
+function mapListing(row: PublicListingRow, image: string): Listing {
   return {
     id: row.id,
     title: row.title,
@@ -153,12 +159,10 @@ function mapListing(row: ListingRow, image: string): Listing {
     category: row.category,
     location: row.location,
     seller: row.seller_name,
-    sellerEmail: row.seller_email,
-    sellerAddress: row.seller_address,
-    sellerPhone: row.seller_phone,
     image,
     description: row.description,
     posted: new Date(row.created_at).toLocaleDateString(),
+    status: row.status,
   };
 }
 
@@ -176,8 +180,11 @@ export default function Home() {
   const [imageUploadError, setImageUploadError] = useState("");
   const [formError, setFormError] = useState("");
   const [isSavingListing, setIsSavingListing] = useState(false);
-  const [messageError, setMessageError] = useState("");
-  const [isSavingMessage, setIsSavingMessage] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [sellerEmailVerified, setSellerEmailVerified] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
@@ -190,7 +197,10 @@ export default function Home() {
       try {
         const { data, error } = await supabase
           .from("listings")
-          .select("*")
+          .select(
+            "id,title,price,category,location,seller_name,description,image_path,created_at,status",
+          )
+          .neq("status", "pending_onboarding")
           .order("created_at", { ascending: false });
 
         if (cancelled) return;
@@ -258,6 +268,33 @@ export default function Home() {
     window.setTimeout(() => setNotification(""), 3200);
   }
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connect = params.get("connect");
+    const checkout = params.get("checkout");
+    const message =
+      connect === "complete"
+        ? "Stripe confirmed your seller account is ready."
+        : connect === "pending"
+          ? "Stripe is still reviewing your seller details. Your listing will appear when transfers are enabled."
+          : connect === "check_failed"
+            ? "We couldn’t verify your Stripe status. Please try again."
+            : checkout === "cancelled"
+              ? "Checkout was canceled; the listing is still available."
+              : "";
+
+    if (message) {
+      const notificationTimeout = window.setTimeout(() => {
+        setNotification(message);
+      }, 0);
+      const dismissTimeout = window.setTimeout(() => setNotification(""), 5000);
+      return () => {
+        window.clearTimeout(notificationTimeout);
+        window.clearTimeout(dismissTimeout);
+      };
+    }
+  }, []);
+
   function updateDraft<Key extends keyof ListingDraft>(
     key: Key,
     value: ListingDraft[Key],
@@ -298,10 +335,45 @@ export default function Home() {
 
     setIsSavingListing(true);
     setFormError("");
-    const id = crypto.randomUUID();
-    const imagePath = `${id}.${imageExtensions[draft.imageFile.type]}`;
 
     try {
+      const sellerEmail = draft.sellerEmail.trim().toLowerCase();
+
+      if (!sellerEmailVerified) {
+        if (!verificationSent) {
+          const sendResponse = await fetch("/api/seller-verification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: sellerEmail }),
+          });
+          const sendResult = (await sendResponse.json()) as { error?: string };
+          if (!sendResponse.ok) {
+            setFormError(sendResult.error ?? "Could not send the verification code.");
+            return;
+          }
+          setVerificationSent(true);
+          showNotification("Check your email for the seller verification code.");
+          return;
+        }
+
+        const verifyResponse = await fetch("/api/seller-verification/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: sellerEmail, code: verificationCode }),
+        });
+        const verifyResult = (await verifyResponse.json()) as {
+          error?: string;
+          verified?: boolean;
+        };
+        if (!verifyResponse.ok || !verifyResult.verified) {
+          setFormError(verifyResult.error ?? "Could not verify the seller email.");
+          return;
+        }
+        setSellerEmailVerified(true);
+      }
+
+      const id = crypto.randomUUID();
+      const imagePath = `${id}.${imageExtensions[draft.imageFile.type]}`;
       const { error: uploadError } = await supabase.storage
         .from(imageBucket)
         .upload(imagePath, draft.imageFile, {
@@ -322,47 +394,86 @@ export default function Home() {
         category: draft.category,
         location: draft.location.trim(),
         seller_name: draft.seller.trim(),
-        seller_email: draft.sellerEmail.trim(),
-        seller_address: draft.sellerAddress.trim(),
-        seller_phone: draft.sellerPhone.trim(),
+        seller_email: sellerEmail,
+        seller_country: draft.sellerCountry.trim().toUpperCase(),
+        seller_address: null,
+        seller_phone: null,
         description: draft.description.trim(),
         image_path: imagePath,
+        status: "pending_onboarding" as const,
+        reserved_order_id: null,
+        sold_at: null,
       };
-      const { error: insertError } = await supabase
-        .from("listings")
-        .insert(listingData);
+      const response = await fetch("/api/listings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          title: listingData.title,
+          price: listingData.price,
+          category: listingData.category,
+          location: listingData.location,
+          sellerName: listingData.seller_name,
+          sellerEmail: listingData.seller_email,
+          sellerCountry: listingData.seller_country,
+          description: listingData.description,
+          imagePath,
+        }),
+      });
+      const result = (await response.json()) as {
+        created?: boolean;
+        error?: string;
+        emailSent?: boolean;
+        sellerOnboardingComplete?: boolean;
+        onboardingUrl?: string;
+      };
 
-      if (insertError) {
+      if (!response.ok || !result.created) {
         const { error: cleanupError } = await supabase.storage
           .from(imageBucket)
           .remove([imagePath]);
         setFormError(
           cleanupError
-            ? `Listing save failed: ${insertError.message}. The uploaded photo could not be removed: ${cleanupError.message}`
-            : `Listing save failed: ${insertError.message}`,
+            ? `${result.error ?? "Listing save failed."} The uploaded photo could not be removed: ${cleanupError.message}`
+            : result.error ?? "Listing save failed.",
         );
         return;
       }
 
-      const imageUrl = supabase.storage
-        .from(imageBucket)
-        .getPublicUrl(imagePath).data.publicUrl;
-      setListings((current) => [
-        mapListing(
-          {
-            ...listingData,
-            created_at: new Date().toISOString(),
-          },
-          imageUrl,
-        ),
-        ...current,
-      ]);
+      if (result.sellerOnboardingComplete) {
+        const imageUrl = supabase.storage
+          .from(imageBucket)
+          .getPublicUrl(imagePath).data.publicUrl;
+        setListings((current) => [
+          mapListing(
+            {
+              ...listingData,
+              status: "available",
+              created_at: new Date().toISOString(),
+            },
+            imageUrl,
+          ),
+          ...current,
+        ]);
+      }
       setActiveCategory("All");
       setSearch("");
       setIsFormOpen(false);
       setDraft(emptyListingDraft);
+      setVerificationSent(false);
+      setVerificationCode("");
+      setSellerEmailVerified(false);
       setImageUploadError("");
-      showNotification("Your listing is live!");
+      showNotification(
+        result.sellerOnboardingComplete
+          ? "Your listing is live."
+          : result.emailSent
+            ? "Listing saved. Check your email to finish Stripe onboarding."
+            : "Listing saved. Continue Stripe onboarding using the link shown.",
+      );
+      if (result.onboardingUrl) {
+        window.location.assign(result.onboardingUrl);
+      }
     } catch (error) {
       setFormError(
         error instanceof Error ? error.message : "Could not publish listing.",
@@ -372,49 +483,41 @@ export default function Home() {
     }
   }
 
-  async function handleSendMessage(event: React.FormEvent<HTMLFormElement>) {
+  async function handleBuyNow(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedListing) return;
 
     const formData = new FormData(event.currentTarget);
-    const buyerEmail = String(formData.get("buyerEmail")).trim();
-    const message = String(formData.get("message")).trim();
-    setIsSavingMessage(true);
-    setMessageError("");
+    const buyerEmail = String(formData.get("buyerEmail")).trim().toLowerCase();
+    setIsStartingCheckout(true);
+    setCheckoutError("");
 
     try {
-      const response = await fetch("/api/listing-inquiries", {
+      const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           listingId: selectedListing.id,
           buyerEmail,
-          message,
         }),
       });
       const result = (await response.json()) as {
         error?: string;
-        sent?: boolean;
-        saved?: boolean;
+        checkoutUrl?: string;
       };
 
-      if (!response.ok) {
-        setMessageError(result.error ?? "Could not send your message.");
+      if (!response.ok || !result.checkoutUrl) {
+        setCheckoutError(result.error ?? "Could not start checkout.");
         return;
       }
 
-      setSelectedListing(null);
-      showNotification(
-        result.saved
-          ? "Your message was emailed to the seller."
-          : "Your message was emailed, but couldn’t be saved.",
-      );
+      window.location.assign(result.checkoutUrl);
     } catch (error) {
-      setMessageError(
-        error instanceof Error ? error.message : "Could not send your message.",
+      setCheckoutError(
+        error instanceof Error ? error.message : "Could not start checkout.",
       );
     } finally {
-      setIsSavingMessage(false);
+      setIsStartingCheckout(false);
     }
   }
 
@@ -532,7 +635,7 @@ export default function Home() {
                   Next-level marketplace
                 </p>
                 <h1 className="text-xl font-bold tracking-tight sm:mt-1 sm:text-2xl">
-                  {activeCategory === "All" ? "Available Listing" : activeCategory}
+                  {activeCategory === "All" ? "Marketplace listings" : activeCategory}
                 </h1>
               </div>
             </div>
@@ -608,12 +711,16 @@ export default function Home() {
                     <div className="relative aspect-[4/3] overflow-hidden bg-neutral-100">
                       <div
                         role="img"
-                        aria-label={listing.title}
+                        aria-label={`${listing.title}${listing.status === "sold" ? ", sold out" : ""}`}
                         className="h-full w-full bg-cover bg-center transition-transform duration-300 group-hover:scale-[1.04]"
                         style={{ backgroundImage: `url("${listing.image}")` }}
                       />
                       <span className="absolute left-2.5 top-2.5 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-medium text-neutral-600 backdrop-blur">
-                        {listing.category}
+                        {listing.status === "sold"
+                          ? "Sold out"
+                          : listing.status === "reserved"
+                            ? "Checkout in progress"
+                            : listing.category}
                       </span>
                     </div>
                     <CardContent className="px-3 pb-3 pt-3">
@@ -799,7 +906,8 @@ export default function Home() {
                     <div className="mb-3">
                       <p className="text-sm font-semibold">Seller details</p>
                       <p className="mt-0.5 text-xs text-neutral-500">
-                        Buyers can use these details to contact you.
+                        Verify your email before connecting or reusing a Stripe
+                        seller account. Stripe collects the required payout details.
                       </p>
                     </div>
                     <div className="space-y-3">
@@ -828,41 +936,61 @@ export default function Home() {
                           autoComplete="email"
                           placeholder="you@example.com"
                           value={draft.sellerEmail}
-                          onChange={(event) => updateDraft("sellerEmail", event.target.value)}
+                          onChange={(event) => {
+                            updateDraft("sellerEmail", event.target.value);
+                            setVerificationSent(false);
+                            setVerificationCode("");
+                            setSellerEmailVerified(false);
+                          }}
                           required
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label htmlFor="seller-phone" className="mb-1.5 block text-xs font-medium text-neutral-700">
-                            Phone
-                          </label>
-                          <Input
-                            id="seller-phone"
-                            name="sellerPhone"
-                            type="tel"
-                            autoComplete="tel"
-                            placeholder="(555) 555-0123"
-                            value={draft.sellerPhone}
-                            onChange={(event) => updateDraft("sellerPhone", event.target.value)}
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="seller-address" className="mb-1.5 block text-xs font-medium text-neutral-700">
-                            Address
-                          </label>
-                          <Input
-                            id="seller-address"
-                            name="sellerAddress"
-                            autoComplete="street-address"
-                            placeholder="Street address"
-                            value={draft.sellerAddress}
-                            onChange={(event) => updateDraft("sellerAddress", event.target.value)}
-                            required
-                          />
-                        </div>
+                      <div>
+                        <label htmlFor="seller-country" className="mb-1.5 block text-xs font-medium text-neutral-700">
+                          Seller country code
+                        </label>
+                        <Input
+                          id="seller-country"
+                          name="sellerCountry"
+                          autoComplete="country"
+                          placeholder="ID"
+                          maxLength={2}
+                          value={draft.sellerCountry}
+                          onChange={(event) =>
+                            updateDraft("sellerCountry", event.target.value.toUpperCase())
+                          }
+                          required
+                        />
+                        <p className="mt-1 text-xs text-neutral-400">
+                          Use the seller’s two-letter ISO country code, such as ID or US.
+                        </p>
                       </div>
+                      {verificationSent && !sellerEmailVerified && (
+                        <div>
+                          <label htmlFor="seller-verification-code" className="mb-1.5 block text-xs font-medium text-neutral-700">
+                            Email verification code
+                          </label>
+                          <Input
+                            id="seller-verification-code"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            maxLength={6}
+                            pattern="[0-9]{6}"
+                            value={verificationCode}
+                            onChange={(event) =>
+                              setVerificationCode(
+                                event.target.value.replace(/\D/g, "").slice(0, 6),
+                              )
+                            }
+                            required
+                          />
+                        </div>
+                      )}
+                      {sellerEmailVerified && (
+                        <p className="text-xs font-medium text-green-700">
+                          Seller email verified.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -900,7 +1028,13 @@ export default function Home() {
                     className="mt-2 w-full justify-center"
                     disabled={!draft.imageFile || isSavingListing}
                   >
-                    {isSavingListing ? "Publishing..." : "Publish listing"}
+                    {isSavingListing
+                      ? "Processing..."
+                      : sellerEmailVerified
+                        ? "Create listing"
+                        : verificationSent
+                          ? "Verify and continue"
+                          : "Verify email and continue"}
                     <ArrowRight className="size-4" />
                   </Button>
                 </form>
@@ -1004,77 +1138,45 @@ export default function Home() {
                     {selectedListing.description}
                   </p>
                   <div className="mt-6 rounded-xl bg-[#f7f7f5] p-4">
-                    <p className="text-xs text-neutral-500">Seller details</p>
+                    <p className="text-xs text-neutral-500">Seller</p>
                     <p className="mt-1 font-medium">{selectedListing.seller}</p>
-                    <div className="mt-3 space-y-2.5 text-sm text-neutral-600">
-                      <p className="flex items-start gap-2">
-                        <MapPin className="mt-0.5 size-4 shrink-0 text-neutral-400" />
-                        <span>{selectedListing.sellerAddress}</span>
-                      </p>
-                      <a
-                        href={`mailto:${selectedListing.sellerEmail}`}
-                        className="flex items-center gap-2 hover:text-[#587a3b]"
-                      >
-                        <Mail className="size-4 shrink-0 text-neutral-400" />
-                        <span className="break-all">
-                          {selectedListing.sellerEmail}
-                        </span>
-                      </a>
-                      <a
-                        href={`tel:${selectedListing.sellerPhone}`}
-                        className="flex items-center gap-2 hover:text-[#587a3b]"
-                      >
-                        <Phone className="size-4 shrink-0 text-neutral-400" />
-                        <span>{selectedListing.sellerPhone}</span>
-                      </a>
-                    </div>
                   </div>
-                  <form onSubmit={handleSendMessage} className="mt-6">
-                    <p className="mb-3 text-sm font-semibold">
-                      Send seller a message
+                  {selectedListing.status === "available" ? (
+                    <form onSubmit={handleBuyNow} className="mt-6">
+                      <label
+                        htmlFor="buyer-email"
+                        className="mb-1.5 block text-sm font-medium"
+                      >
+                        Your email address
+                      </label>
+                      <Input
+                        id="buyer-email"
+                        name="buyerEmail"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="Your email address"
+                        required
+                      />
+                      {checkoutError && (
+                        <p role="alert" className="mt-2 text-sm text-red-600">
+                          {checkoutError}
+                        </p>
+                      )}
+                      <Button
+                        type="submit"
+                        className="mt-3 w-full justify-center"
+                        disabled={isStartingCheckout}
+                      >
+                        {isStartingCheckout ? "Opening secure checkout..." : "Buy now"}
+                      </Button>
+                    </form>
+                  ) : (
+                    <p className="mt-6 rounded-lg bg-neutral-100 p-3 text-sm font-medium text-neutral-600">
+                      {selectedListing.status === "sold"
+                        ? "This listing is sold out."
+                        : "Checkout is already in progress for this listing."}
                     </p>
-                    <label
-                      htmlFor="buyer-email"
-                      className="mb-1.5 block text-sm font-medium"
-                    >
-                      Your email address
-                    </label>
-                    <Input
-                      id="buyer-email"
-                      name="buyerEmail"
-                      type="email"
-                      autoComplete="email"
-                      placeholder="Your email address"
-                      required
-                    />
-                    <label
-                      htmlFor="seller-message"
-                      className="mb-1.5 mt-3 block text-sm font-medium"
-                    >
-                      Message
-                    </label>
-                    <Textarea
-                      id="seller-message"
-                      name="message"
-                      placeholder="Hi! Is this still available?"
-                      minLength={2}
-                      className="mt-3"
-                      required
-                    />
-                    {messageError && (
-                      <p role="alert" className="mt-2 text-sm text-red-600">
-                        {messageError}
-                      </p>
-                    )}
-                    <Button
-                      type="submit"
-                      className="mt-3 w-full justify-center"
-                      disabled={isSavingMessage}
-                    >
-                      <Send className="size-4" />
-                      {isSavingMessage ? "Sending..." : "Send message"}
-                    </Button>
-                  </form>
+                  )}
                 </div>
               </div>
             )
