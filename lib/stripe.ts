@@ -51,7 +51,6 @@ export async function createConnectedAccountLink(
 
   const returnUrl = new URL("/api/connect/return", baseUrl);
   returnUrl.searchParams.set("account", accountId);
-  if (listingId) returnUrl.searchParams.set("listing_id", listingId);
 
   return getStripe().accountLinks.create({
     account: accountId,

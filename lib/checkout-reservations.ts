@@ -1,4 +1,5 @@
 import { getStripe } from "@/lib/stripe";
+import { syncSellerAccount } from "@/lib/connect";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type CheckoutStatus = "available" | "processing" | "sold";
@@ -176,6 +177,71 @@ export async function cancelCheckout(
   return releaseReservation(supabase, orderId, order.listing_id);
 }
 
+async function expirePendingOnboardingListings() {
+  const supabase = createAdminClient();
+  const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: listings, error } = await supabase
+    .from("listings")
+    .select("id,seller_email,image_path")
+    .eq("status", "pending_onboarding")
+    .lt("created_at", cutoff)
+    .order("created_at", { ascending: true })
+    .limit(20);
+
+  if (error) {
+    throw new Error(`Could not find expired onboarding listings: ${error.message}`);
+  }
+
+  let deletedCount = 0;
+  let failedCount = 0;
+  for (const listing of listings ?? []) {
+    try {
+      const { data: sellerAccount, error: sellerError } = await supabase
+        .from("seller_accounts")
+        .select("stripe_account_id")
+        .eq("email", listing.seller_email)
+        .maybeSingle();
+      if (sellerError) {
+        throw new Error(`Could not look up seller account: ${sellerError.message}`);
+      }
+
+      if (sellerAccount) {
+        const seller = await syncSellerAccount(sellerAccount.stripe_account_id);
+        if (seller?.complete) continue;
+      }
+
+      const { error: deleteError } = await supabase
+        .from("listings")
+        .delete()
+        .eq("id", listing.id)
+        .eq("status", "pending_onboarding");
+      if (deleteError) {
+        throw new Error(`Could not delete expired listing: ${deleteError.message}`);
+      }
+
+      const { error: imageError } = await supabase.storage
+        .from("marketplace-listings")
+        .remove([listing.image_path]);
+      if (imageError) {
+        throw new Error(`Could not remove expired listing image: ${imageError.message}`);
+      }
+      deletedCount += 1;
+    } catch (error) {
+      failedCount += 1;
+      console.error("Could not expire pending onboarding listing:", {
+        listingId: listing.id,
+        error,
+      });
+    }
+  }
+
+  return {
+    checked: listings?.length ?? 0,
+    deletedCount,
+    failedCount,
+  };
+}
+
 export async function releaseStaleCheckoutReservations() {
   const supabase = createAdminClient();
   const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -205,9 +271,12 @@ export async function releaseStaleCheckoutReservations() {
     }
   }
 
+  const expiredOnboarding = await expirePendingOnboardingListings();
+
   return {
     checked: orders?.length ?? 0,
     failedCount,
     resolutions,
+    expiredOnboarding,
   };
 }

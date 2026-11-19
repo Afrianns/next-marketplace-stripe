@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createConnectedAccountLink } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateSellerAccount } from "@/lib/connect";
+import { sendSellerOnboardingLink } from "@/lib/marketplace-email";
 import { isSameOriginRequest, isValidEmail } from "@/lib/http";
 import {
   hashSellerVerificationToken,
@@ -196,11 +197,22 @@ export async function POST(request: Request) {
       );
     }
 
+    let onboardingEmailSent = false;
+    if (onboardingUrl) {
+      try {
+        await sendSellerOnboardingLink(email, sellerName, title, onboardingUrl);
+        onboardingEmailSent = true;
+      } catch (emailError) {
+        console.error("Could not email seller onboarding link:", emailError);
+      }
+    }
+
     return Response.json(
       {
         created: true,
         sellerOnboardingComplete: sellerAccount.readiness.complete,
         onboardingUrl,
+        onboardingEmailSent,
       },
       { status: 201 },
     );

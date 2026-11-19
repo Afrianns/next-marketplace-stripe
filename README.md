@@ -51,7 +51,8 @@ The fourth allows a successfully used verification code to be cleared.
 The fifth adds direct-charge readiness state and binds Connect webhook events
 to the connected account that created each order.
 The sixth allows the server to delete a listing whose seller returns from Stripe
-onboarding without completing the requirements.
+onboarding without completing the requirements, and when it expires after one
+hour.
 
 Existing sample listings can still be displayed, but must be associated with an
 onboarded seller account before checkout can be enabled for them.
@@ -64,9 +65,12 @@ Configure Stripe Connect for the platform and set `STRIPE_SECRET_KEY` and
 emails are verified before they can be associated with a Connect account. A
 verified email already present in the local `seller_accounts` table reuses that
 account; fully onboarded sellers skip onboarding. After email verification,
-other sellers are redirected directly to Stripe-hosted onboarding. Their listing
-stays pending until Stripe reports active card-payments capability and no
-outstanding requirements.
+other sellers receive an email with a link to Stripe-hosted onboarding and are
+redirected there immediately. Their listing stays pending until Stripe reports
+active card-payments capability and no outstanding requirements. Pending
+listings that remain incomplete for an hour are deleted with their uploaded
+image during marketplace reconciliation; reconciliation runs on page load and
+once per minute while the marketplace is open.
 
 Create a Connect webhook endpoint that listens to events from **connected
 accounts** at:
