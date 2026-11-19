@@ -32,6 +32,17 @@ export async function POST(request: Request) {
     return Response.json({ received: true, ignored: true });
   }
 
+  const connectedAccountId = event.account;
+  if (
+    typeof connectedAccountId !== "string" ||
+    !/^acct_[A-Za-z0-9]+$/.test(connectedAccountId)
+  ) {
+    console.error("Stripe Connect Checkout event has no valid connected account.", {
+      eventId: event.id,
+    });
+    return Response.json({ error: "Missing connected account context." }, { status: 400 });
+  }
+
   const session = event.data.object as Stripe.Checkout.Session;
   const orderId = session.metadata?.order_id;
   if (!orderId) {
@@ -69,6 +80,7 @@ export async function POST(request: Request) {
       p_payment_intent_id: paymentIntentId,
       p_buyer_email: buyerEmail,
       p_payment_succeeded: paymentSucceeded,
+      p_connected_account_id: connectedAccountId,
     });
 
     if (error) {

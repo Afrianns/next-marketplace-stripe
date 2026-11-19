@@ -151,8 +151,6 @@ export async function POST(request: Request) {
     successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
     const cancelUrl = new URL("/", baseUrl);
     cancelUrl.searchParams.set("checkout", "cancelled");
-    const transferGroup = `listing_${orderId}`;
-
     let session;
     try {
       session = await getStripe().checkout.sessions.create(
@@ -174,13 +172,20 @@ export async function POST(request: Request) {
           ],
           metadata: { order_id: orderId },
           payment_intent_data: {
+            ...(platformFeeCents > 0
+              ? {
+                  application_fee_amount: platformFeeCents,
+                }
+              : {}),
             metadata: { order_id: orderId },
-            transfer_group: transferGroup,
           },
           success_url: successUrl.toString(),
           cancel_url: cancelUrl.toString(),
         },
-        { idempotencyKey: `checkout-${orderId}` },
+        {
+          idempotencyKey: `checkout-${orderId}`,
+          stripeAccount: seller.stripe_account_id,
+        },
       );
     } catch (error) {
       const { error: releaseError } = await supabase.rpc(
@@ -219,7 +224,11 @@ export async function POST(request: Request) {
     if (sessionSaveError) {
       console.error("Could not save Checkout Session:", sessionSaveError);
       try {
-        await getStripe().checkout.sessions.expire(session.id);
+        await getStripe().checkout.sessions.expire(
+          session.id,
+          {},
+          { stripeAccount: seller.stripe_account_id },
+        );
         await supabase.rpc("release_listing_checkout_reservation", {
           p_order_id: orderId,
         });

@@ -42,7 +42,7 @@ type SellerAccountRow = {
   stripe_account_id: string;
   country: string;
   onboarding_complete: boolean;
-  transfers_status: string;
+  card_payments_status: string;
   requirements_count: number;
   onboarding_refresh_token_hash: string | null;
   updated_at: string;
@@ -171,6 +171,7 @@ export interface Database {
           p_payment_intent_id: string | null;
           p_buyer_email: string | null;
           p_payment_succeeded: boolean;
+          p_connected_account_id: string;
         };
         Returns: boolean;
       };

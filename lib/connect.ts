@@ -8,7 +8,7 @@ import {
 } from "@/lib/stripe";
 import { normalizeEmail } from "@/lib/seller-verification";
 
-const recipientConfiguration: Stripe.V2.Core.AccountCreateParams = {
+const merchantConfiguration: Stripe.V2.Core.AccountCreateParams = {
   contact_email: "",
   display_name: "",
   identity: { country: "us" },
@@ -16,20 +16,18 @@ const recipientConfiguration: Stripe.V2.Core.AccountCreateParams = {
   defaults: {
     currency: "usd",
     responsibilities: {
-      fees_collector: "application",
-      losses_collector: "application",
+      fees_collector: "stripe",
+      losses_collector: "stripe",
     },
   },
   configuration: {
-    recipient: {
+    merchant: {
       capabilities: {
-        stripe_balance: {
-          stripe_transfers: { requested: true },
-        },
+        card_payments: { requested: true },
       },
     },
   },
-  include: ["configuration.recipient", "identity", "requirements"],
+  include: ["configuration.merchant", "identity", "requirements"],
 };
 
 export async function getOrCreateSellerAccount(
@@ -59,7 +57,7 @@ export async function getOrCreateSellerAccount(
 
   if (!accountId) {
     const accountParams: Stripe.V2.Core.AccountCreateParams = {
-      ...recipientConfiguration,
+      ...merchantConfiguration,
       contact_email: normalizedEmail,
       display_name: sellerName.trim(),
       identity: { country: normalizedCountry },
@@ -80,7 +78,7 @@ export async function getOrCreateSellerAccount(
         stripe_account_id: accountId,
         country: normalizedCountry,
         onboarding_complete: false,
-        transfers_status: "pending",
+        card_payments_status: "pending",
         requirements_count: 0,
         onboarding_refresh_token_hash: null,
       });
@@ -110,7 +108,7 @@ export async function getOrCreateSellerAccount(
     .from("seller_accounts")
     .update({
       onboarding_complete: readiness.complete,
-      transfers_status: readiness.transfersStatus,
+      card_payments_status: readiness.cardPaymentsStatus,
       requirements_count: readiness.requirementsCount,
       onboarding_refresh_token_hash: readiness.complete
         ? null
@@ -165,7 +163,7 @@ export async function syncSellerAccount(accountId: string) {
     .from("seller_accounts")
     .update({
       onboarding_complete: readiness.complete,
-      transfers_status: readiness.transfersStatus,
+      card_payments_status: readiness.cardPaymentsStatus,
       requirements_count: readiness.requirementsCount,
       onboarding_refresh_token_hash: readiness.complete ? null : undefined,
       updated_at: new Date().toISOString(),

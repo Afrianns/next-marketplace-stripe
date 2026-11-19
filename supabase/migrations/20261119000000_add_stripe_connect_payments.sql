@@ -14,7 +14,7 @@ create table if not exists public.seller_accounts (
   stripe_account_id text not null unique,
   country char(2) not null,
   onboarding_complete boolean not null default false,
-  transfers_status text not null default 'pending',
+  card_payments_status text not null default 'pending',
   requirements_count integer not null default 0 check (requirements_count >= 0),
   onboarding_refresh_token_hash text,
   updated_at timestamptz not null default now()
@@ -281,7 +281,8 @@ create or replace function public.apply_stripe_checkout_event(
   p_session_id text,
   p_payment_intent_id text,
   p_buyer_email text,
-  p_payment_succeeded boolean
+  p_payment_succeeded boolean,
+  p_connected_account_id text
 )
 returns boolean
 language plpgsql
@@ -307,7 +308,10 @@ begin
     where id = p_order_id
     for update;
 
-  if not found or current_order.stripe_checkout_session_id <> p_session_id then
+  if not found
+    or p_connected_account_id is null
+    or current_order.stripe_checkout_session_id is distinct from p_session_id
+    or current_order.seller_account_id is distinct from p_connected_account_id then
     raise exception 'checkout_order_mismatch';
   end if;
 
@@ -360,8 +364,8 @@ end;
 $$;
 
 revoke all on function public.apply_stripe_checkout_event(
-  text, text, uuid, text, text, text, boolean
+  text, text, uuid, text, text, text, boolean, text
 ) from public, anon, authenticated;
 grant execute on function public.apply_stripe_checkout_event(
-  text, text, uuid, text, text, text, boolean
+  text, text, uuid, text, text, text, boolean, text
 ) to service_role;

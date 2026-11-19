@@ -18,17 +18,17 @@ export function getStripe() {
 export async function getConnectedAccountReadiness(accountId: string) {
   const account = await getStripe().v2.core.accounts.retrieve(
     accountId,
-    { include: ["configuration.recipient", "requirements"] },
+    { include: ["configuration.merchant", "requirements"] },
     { apiVersion: connectApiVersion },
   );
-  const transfersStatus =
-    account.configuration?.recipient?.capabilities?.stripe_balance
-      ?.stripe_transfers?.status ?? "pending";
+  const cardPaymentsStatus =
+    account.configuration?.merchant?.capabilities?.card_payments?.status ??
+    "pending";
   const requirementsCount = account.requirements?.entries?.length ?? 0;
 
   return {
-    complete: transfersStatus === "active" && requirementsCount === 0,
-    transfersStatus,
+    complete: cardPaymentsStatus === "active" && requirementsCount === 0,
+    cardPaymentsStatus,
     requirementsCount,
   };
 }
