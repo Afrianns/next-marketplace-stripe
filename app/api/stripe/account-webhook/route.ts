@@ -35,6 +35,11 @@ export async function POST(request: Request) {
     );
   }
 
+  console.info("Received Stripe account webhook event:", {
+    eventId: notification.id,
+    eventType: notification.type,
+  });
+
   if (!accountReadinessEventTypes.has(notification.type)) {
     return Response.json({ received: true, ignored: true });
   }
@@ -56,7 +61,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    await syncSellerAccount(accountId);
+    const seller = await syncSellerAccount(accountId);
+    console.info("Synced seller readiness from Stripe account webhook:", {
+      eventId: notification.id,
+      accountId,
+      foundSeller: Boolean(seller),
+      onboardingComplete: seller?.complete ?? false,
+      cardPaymentsStatus: seller?.cardPaymentsStatus ?? null,
+      requirementsCount: seller?.requirementsCount ?? null,
+    });
     return Response.json({ received: true });
   } catch (error) {
     console.error("Could not sync seller from Stripe account webhook:", {
