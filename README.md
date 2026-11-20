@@ -21,7 +21,6 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
-STRIPE_ACCOUNT_LINK_WEBHOOK_SECRET=
 SELLER_VERIFICATION_SECRET=
 SITE_URL=http://localhost:3000
 GMAIL_USER=
@@ -69,8 +68,8 @@ other sellers receive an email with a link to Stripe-hosted onboarding and are
 redirected there immediately. Their listing stays pending until Stripe reports
 active card-payments capability and no outstanding requirements. Pending
 listings that remain incomplete for an hour are deleted with their uploaded
-image during marketplace reconciliation; reconciliation runs on page load and
-once per minute while the marketplace is open.
+image during marketplace reconciliation; checkout reservation reconciliation
+runs on page load and once per minute while the marketplace is open.
 
 Create a Connect webhook endpoint that listens to events from **connected
 accounts** at:
@@ -87,18 +86,8 @@ Subscribe it to these Checkout events and set that endpoint's signing secret as
 - `checkout.session.async_payment_failed`
 - `checkout.session.expired`
 
-Create a second Stripe event destination in **thin event** format for **Your
-account** at:
-
-```text
-https://your-domain.example/api/stripe/account-link-webhook
-```
-
-Subscribe it to `v2.core.account_link.returned` and set its signing secret as
-`STRIPE_ACCOUNT_LINK_WEBHOOK_SECRET`. This onboarding-specific event identifies
-the connected account whose hosted onboarding flow was completed and triggers
-a fresh status sync. The Stripe return handler also retries the sync briefly
-before redirecting the seller home.
+The Stripe-hosted onboarding return handler syncs the account before redirecting
+the seller home.
 
 The Buy now flow creates a one-time USD Checkout Session directly on the seller's
 connected account, reserves the listing, and collects a 10% application fee for

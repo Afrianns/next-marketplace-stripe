@@ -295,7 +295,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     let requestInProgress = false;
@@ -351,7 +351,7 @@ export default function Home() {
       document.removeEventListener("visibilitychange", reconcileWhenVisible);
       window.removeEventListener("pageshow", reconcileWhenVisible);
     };
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     const previewUrl = draft.image;
