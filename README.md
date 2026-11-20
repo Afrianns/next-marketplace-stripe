@@ -21,6 +21,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
+STRIPE_ACCOUNT_WEBHOOK_SECRET=
 SELLER_VERIFICATION_SECRET=
 SITE_URL=http://localhost:3000
 GMAIL_USER=
@@ -88,6 +89,24 @@ Subscribe it to these Checkout events and set that endpoint's signing secret as
 
 The Stripe-hosted onboarding return handler syncs the account before redirecting
 the seller home.
+
+Create a separate Stripe event destination in **thin event** format for
+**Your account** at:
+
+```text
+https://your-domain.example/api/stripe/account-webhook
+```
+
+Subscribe it to these account readiness events and set its signing secret as
+`STRIPE_ACCOUNT_WEBHOOK_SECRET` in Vercel:
+
+- `v2.core.account.updated`
+- `v2.core.account[configuration.merchant].capability_status_updated`
+- `v2.core.account[configuration.merchant].updated`
+- `v2.core.account[requirements].updated`
+
+The handler reads the account ID from the thin event and retrieves its latest
+Stripe readiness before updating the matching seller and listing in Supabase.
 
 The Buy now flow creates a one-time USD Checkout Session directly on the seller's
 connected account, reserves the listing, and collects a 10% application fee for
