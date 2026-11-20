@@ -29,7 +29,7 @@ GMAIL_APP_PASSWORD=
 ```
 
 `SELLER_VERIFICATION_SECRET` should be a long, random value. Gmail sends the
-one-time seller email codes and, when available, Stripe onboarding links.
+one-time seller email codes, Stripe onboarding links, and buyer purchase receipts.
 
 ## Supabase
 
@@ -110,8 +110,10 @@ Stripe readiness before updating the matching seller and listing in Supabase.
 
 The Buy now flow creates a one-time USD Checkout Session directly on the seller's
 connected account, reserves the listing, and collects a 10% application fee for
-the platform. Stripe deducts processing fees from the seller's charge. A verified
-Connect webhook records payment in Supabase and marks the listing sold;
+the platform. It creates a Stripe invoice for the one-time payment. When payment
+succeeds, the Connect webhook records it in Supabase and emails the buyer product
+details, order reference, and links to the invoice PDF and hosted invoice page.
+Stripe deducts processing fees from the seller's charge. The webhook marks the listing sold;
 expiration or failed asynchronous payment releases the reservation. Webhook
 signatures, connected-account ownership, and duplicate event IDs are checked
 server-side. If a buyer cancels or returns to the marketplace while Checkout is

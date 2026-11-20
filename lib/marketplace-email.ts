@@ -149,3 +149,70 @@ export async function sendSellerOnboardingLink(
     `.trim(),
   });
 }
+
+export async function sendBuyerPurchaseReceipt(input: {
+  email: string;
+  listingTitle: string;
+  listingDescription: string;
+  listingCategory: string;
+  listingLocation: string;
+  amountCents: number;
+  currency: string;
+  orderId: string;
+  invoicePdfUrl: string | null;
+  hostedInvoiceUrl: string | null;
+}) {
+  const user = process.env.GMAIL_USER;
+  if (!user) {
+    throw new Error("Set GMAIL_USER and GMAIL_APP_PASSWORD on the server.");
+  }
+
+  const title = escapeHtml(input.listingTitle);
+  const description = escapeHtml(input.listingDescription);
+  const category = escapeHtml(input.listingCategory);
+  const location = escapeHtml(input.listingLocation);
+  const invoicePdfUrl = input.invoicePdfUrl
+    ? escapeHtml(input.invoicePdfUrl)
+    : null;
+  const hostedInvoiceUrl = input.hostedInvoiceUrl
+    ? escapeHtml(input.hostedInvoiceUrl)
+    : null;
+  const amount = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: input.currency.toUpperCase(),
+  }).format(input.amountCents / 100);
+  const invoiceLinks = [
+    invoicePdfUrl ? `Invoice PDF: ${input.invoicePdfUrl}` : null,
+    hostedInvoiceUrl ? `View invoice: ${input.hostedInvoiceUrl}` : null,
+  ].filter(Boolean).join("\n");
+
+  await getTransporter().sendMail({
+    from: { name: "fairground", address: user },
+    to: input.email,
+    subject: `Your fairground purchase: ${input.listingTitle}`,
+    text: `Thanks for your purchase!\n\nProduct: ${input.listingTitle}\nCategory: ${input.listingCategory}\nLocation: ${input.listingLocation}\nDescription: ${input.listingDescription}\nTotal paid: ${amount}\nOrder: ${input.orderId}\n\n${invoiceLinks || "Your invoice is being prepared. Contact us if you need a copy."}`,
+    html: `
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:Arial,sans-serif;color:#18181b">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e4e4e7;border-radius:12px">
+    <tr><td style="padding:32px">
+      <p style="margin:0 0 20px;font-size:18px;font-weight:700">fairground</p>
+      <h1 style="margin:0 0 12px;font-size:22px">Thanks for your purchase!</h1>
+      <p style="margin:0 0 24px;color:#52525b">Your payment was successful. Here are your purchase details.</p>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
+        <tr><td style="padding:8px 0;color:#71717a">Product</td><td style="padding:8px 0;text-align:right;font-weight:600">${title}</td></tr>
+        <tr><td style="padding:8px 0;color:#71717a">Category</td><td style="padding:8px 0;text-align:right">${category}</td></tr>
+        <tr><td style="padding:8px 0;color:#71717a">Location</td><td style="padding:8px 0;text-align:right">${location}</td></tr>
+        <tr><td style="padding:8px 0;color:#71717a">Total paid</td><td style="padding:8px 0;text-align:right;font-weight:700">${escapeHtml(amount)}</td></tr>
+      </table>
+      <p style="margin:20px 0;color:#52525b;line-height:1.6">${description}</p>
+      <p style="font-size:13px;color:#71717a">Order reference: ${escapeHtml(input.orderId)}</p>
+      ${invoicePdfUrl ? `<p style="margin:24px 0 12px"><a href="${invoicePdfUrl}" style="display:inline-block;padding:12px 18px;background:#18181b;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Download invoice PDF</a></p>` : ""}
+      ${hostedInvoiceUrl ? `<p style="margin:12px 0"><a href="${hostedInvoiceUrl}" style="color:#3f3f46">View your invoice online</a></p>` : ""}
+      ${!invoicePdfUrl && !hostedInvoiceUrl ? `<p style="font-size:13px;color:#71717a">Your invoice is being prepared. Contact us if you need a copy.</p>` : ""}
+    </td></tr>
+  </table>
+</body></html>`.trim(),
+  });
+}

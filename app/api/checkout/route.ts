@@ -158,6 +158,12 @@ export async function POST(request: Request) {
           mode: "payment",
           client_reference_id: orderId,
           customer_email: buyerEmail,
+          invoice_creation: {
+            enabled: true,
+            invoice_data: {
+              description: `Marketplace purchase: ${listing.title}`,
+            },
+          },
           expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
           integration_identifier: `marketplace_${randomLetters(8)}`,
           line_items: [

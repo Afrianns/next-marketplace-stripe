@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendBuyerPurchaseReceipt } from "@/lib/marketplace-email";
 
 const checkoutEventTypes = new Set([
   "checkout.session.completed",
@@ -89,6 +90,63 @@ export async function POST(request: Request) {
         { error: "Could not update the order from Stripe’s event." },
         { status: 500 },
       );
+    }
+
+    if (paymentSucceeded) {
+      const { data: order, error: orderError } = await supabase
+        .from("listing_orders")
+        .select("id,listing_id,buyer_email,amount_cents,currency")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (orderError || !order) {
+        console.error("Could not load paid order for buyer receipt:", orderError);
+        return Response.json(
+          { error: "Could not load order details for the buyer receipt." },
+          { status: 500 },
+        );
+      }
+
+      const { data: listing, error: listingError } = await supabase
+        .from("listings")
+        .select("title,description,category,location")
+        .eq("id", order.listing_id)
+        .maybeSingle();
+      if (listingError || !listing) {
+        console.error("Could not load purchased listing for buyer receipt:", listingError);
+        return Response.json(
+          { error: "Could not load product details for the buyer receipt." },
+          { status: 500 },
+        );
+      }
+
+      const invoiceId =
+        typeof session.invoice === "string"
+          ? session.invoice
+          : session.invoice?.id ?? null;
+      let invoicePdfUrl: string | null = null;
+      let hostedInvoiceUrl: string | null = null;
+      if (invoiceId) {
+        const invoice = await getStripe().invoices.retrieve(
+          invoiceId,
+          {},
+          { stripeAccount: connectedAccountId },
+        );
+        invoicePdfUrl = invoice.invoice_pdf ?? null;
+        hostedInvoiceUrl = invoice.hosted_invoice_url ?? null;
+      }
+
+      await sendBuyerPurchaseReceipt({
+        email: order.buyer_email,
+        listingTitle: listing.title,
+        listingDescription: listing.description,
+        listingCategory: listing.category,
+        listingLocation: listing.location,
+        amountCents: order.amount_cents,
+        currency: order.currency,
+        orderId: order.id,
+        invoicePdfUrl,
+        hostedInvoiceUrl,
+      });
     }
 
     return Response.json({ received: true });
