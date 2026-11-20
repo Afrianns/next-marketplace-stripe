@@ -126,15 +126,30 @@ export async function POST(request: Request) {
       let invoicePdfUrl: string | null = null;
       let hostedInvoiceUrl: string | null = null;
       if (invoiceId) {
-        const invoice = await getStripe().invoices.retrieve(
-          invoiceId,
-          {},
-          { stripeAccount: connectedAccountId },
-        );
-        invoicePdfUrl = invoice.invoice_pdf ?? null;
-        hostedInvoiceUrl = invoice.hosted_invoice_url ?? null;
+        try {
+          const invoice = await getStripe().invoices.retrieve(
+            invoiceId,
+            {},
+            { stripeAccount: connectedAccountId },
+          );
+          invoicePdfUrl = invoice.invoice_pdf ?? null;
+          hostedInvoiceUrl = invoice.hosted_invoice_url ?? null;
+        } catch (error) {
+          console.error("Could not retrieve invoice for paid order; sending receipt without invoice links:", {
+            eventId: event.id,
+            orderId,
+            invoiceId,
+            error,
+          });
+        }
       }
 
+      console.info("Sending buyer purchase receipt:", {
+        eventId: event.id,
+        orderId,
+        buyerEmail: order.buyer_email,
+        hasInvoice: Boolean(invoicePdfUrl || hostedInvoiceUrl),
+      });
       await sendBuyerPurchaseReceipt({
         email: order.buyer_email,
         listingTitle: listing.title,
@@ -147,6 +162,7 @@ export async function POST(request: Request) {
         invoicePdfUrl,
         hostedInvoiceUrl,
       });
+      console.info("Buyer purchase receipt sent:", { eventId: event.id, orderId });
     }
 
     return Response.json({ received: true });
